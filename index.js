@@ -18,7 +18,7 @@ class STM32USARTBootloader {
     this.serialPortBaudRate = options.serialPortBaudRate || 9600;
 
     wpi.pinMode(this.boot0Pin, wpi.OUTPUT);
-    
+
     async.series([
       this._setBoot0MainFlash.bind(this),
       this._deassertReset.bind(this)
@@ -123,9 +123,9 @@ class STM32USARTBootloader {
       this._openSerialPort.bind(this),
       this._assertReset.bind(this),
       this._setBoot0SystemMemory.bind(this),
-      this._sleep.bind(this, 1),
-      this._deassertReset.bind(this),
       this._sleep.bind(this, 10),
+      this._deassertReset.bind(this),
+      this._sleep.bind(this, 100),
       this._enterBootloader.bind(this),
       fn
     ], (err) => {
