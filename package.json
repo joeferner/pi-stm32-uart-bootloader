@@ -3,9 +3,6 @@
   "version": "0.0.1",
   "description": "Raspberry PI STM32 USART Bootloader",
   "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
   "keywords": [
     "raspberry",
     "pi",
@@ -15,7 +12,7 @@
   ],
   "author": "Joe Ferner <joe@fernsroth.com>",
   "license": "MIT",
-  "dependencies": {
+  "peerDependencies": {
     "serialport": "^3.1.2",
     "wiring-pi": "^2.1.1"
   }
