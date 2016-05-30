@@ -6,6 +6,10 @@ var async = require('async');
 const BOOT0_MAIN_FLASH = 0;
 const BOOT0_SYSTEM_MEMORY = 1;
 
+function debug(message) {
+  console.log(message);
+}
+
 class STM32USARTBootloader {
   constructor(options) {
     this.resetPin = options.resetPin;
@@ -27,29 +31,34 @@ class STM32USARTBootloader {
   }
 
   _setBoot0MainFlash(callback) {
+    debug('_setBoot0MainFlash: ' + this.boot0Pin);
     wpi.digitalWrite(this.boot0Pin, BOOT0_MAIN_FLASH);
     callback();
   }
 
   _setBoot0SystemMemory(callback) {
+    debug('_setBoot0SystemMemory: ' + this.boot0Pin);
     wpi.digitalWrite(this.boot0Pin, BOOT0_SYSTEM_MEMORY);
     callback();
   }
 
   _deassertReset(callback) {
+    debug('_deassertReset: ' + this.resetPin);
     wpi.digitalWrite(this.resetPin, 0);
     setTimeout(callback, 1);
   }
 
   _assertReset(callback) {
+    debug('_assertReset: ' + this.resetPin);
     wpi.digitalWrite(this.resetPin, 1);
     setTimeout(callback, 1);
   }
 
   _openSerialPort(callback) {
+    debug('_openSerialPort');
     this.serialPort = new SerialPort(this.serialPortPath, {
       baudrate: this.serialPortBaudRate,
-      dataBits: 7,
+      dataBits: 8,
       parity: 'even',
       stopBits: 1,
       parser: serialPort.parsers.raw
@@ -58,6 +67,7 @@ class STM32USARTBootloader {
   }
 
   _closeSerialPort(callback) {
+    debug('_closeSerialPort');
     this.serialPort.removeAllListeners('data');
     this.serialPort.close((err) => {
       this.serialPort = null;
@@ -66,6 +76,7 @@ class STM32USARTBootloader {
   }
 
   flash(fileName, callback) {
+    debug('flash');
     this._runSystemMemoryFn((callback) => {
       // TODO
       console.log('flash');
@@ -74,6 +85,7 @@ class STM32USARTBootloader {
   }
 
   _enterBootloader(callback) {
+    debug('_enterBootloader');
     var timeout = setTimeout(() => {
       this.serialPort.removeAllListeners('data');
       if (callback) {
@@ -92,7 +104,6 @@ class STM32USARTBootloader {
       return callback();
     });
     this.serialPort.write(new Buffer([0x7f]), (err) => {
-      clearTimeout(timeout);
       if (err) {
         this.serialPort.removeAllListeners('data');
         return callback(err);
@@ -101,6 +112,7 @@ class STM32USARTBootloader {
   }
 
   _runSystemMemoryFn(fn, callback) {
+    debug('_runSystemMemoryFn');
     async.series([
       this._openSerialPort.bind(this),
       this._assertReset.bind(this),
