@@ -43,15 +43,15 @@ class STM32USARTBootloader {
 
   _deassertReset(callback) {
     debug('_deassertReset: ' + this.resetPin);
-    wpi.digitalWrite(this.resetPin, 0);
-    wpi.pinMode(this.resetPin, wpi.INPUT);
+    wpi.digitalWrite(this.resetPin, 1);
+    wpi.pinMode(this.resetPin, wpi.OUTPUT);
     callback();
   }
 
   _assertReset(callback) {
     debug('_assertReset: ' + this.resetPin);
-    wpi.pinMode(this.resetPin, wpi.OUTPUT);
-    wpi.digitalWrite(this.resetPin, 1);
+    wpi.digitalWrite(this.resetPin, 0);
+    wpi.pinMode(this.resetPin, wpi.INPUT);
     callback();
   }
 
@@ -114,6 +114,7 @@ class STM32USARTBootloader {
   }
 
   _sleep(ms, callback) {
+    console.log('sleep', ms);
     setTimeout(callback, ms);
   }
 
@@ -125,7 +126,7 @@ class STM32USARTBootloader {
       this._setBoot0SystemMemory.bind(this),
       this._sleep.bind(this, 10),
       this._deassertReset.bind(this),
-      this._sleep.bind(this, 100),
+      this._sleep.bind(this, 500),
       this._enterBootloader.bind(this),
       fn
     ], (err) => {
