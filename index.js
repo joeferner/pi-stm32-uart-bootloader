@@ -81,28 +81,30 @@ class STM32USARTBootloader {
   }
 
   _withTimeoutAndData(begin, onData, callback) {
-    var timeout = setTimeout(() => {
-      this.serialPort.removeAllListeners('data');
-      if (callback) {
-        callback(new Error('Timeout waiting for response'));
-      }
-    }, 1000);
-    
-    var done = (err) => {
+    var callbackCalled = false;
+    var done = (function _done(callback, err) {
       clearTimeout(timeout);
       this.serialPort.removeAllListeners('data');
-      if (callback) {
-        var cb = callback;
-        callback = null;
-        return cb(err);
+      if (!callbackCalled) {
+        callbackCalled = true;
+        return callback(err);
       }
-    };
-    
+    }).bind(this, callback);
+
+    var timeout = setTimeout(() => {
+      this.serialPort.removeAllListeners('data');
+      done(new Error('Timeout waiting for response'));
+    }, 1000);
+       
     this.serialPort.on('data', (data) => {
       onData(data, done);
     });
     
-    begin(done);
+    begin((err) => {
+      if (err) {
+        done(err);
+      }
+    });
   }
 
   _sleep(ms, callback) {
@@ -122,7 +124,8 @@ class STM32USARTBootloader {
           return callback(new Error('Enter Bootloader: Expected 0x79 found 0x' + data[0].toString(16)));
         }
         return callback();
-      }
+      },
+      callback
     );
   }
   
@@ -155,7 +158,8 @@ class STM32USARTBootloader {
           console.log(this.availableCommands);
           return callback();
         }
-      }
+      },
+      callback
     );
   }
 
