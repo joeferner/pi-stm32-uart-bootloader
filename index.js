@@ -8,6 +8,9 @@ const BOOT0_MAIN_FLASH = 0;
 const BOOT0_SYSTEM_MEMORY = 1;
 
 const CMD_GET = 0x00;
+const CMD_ID  = 0x02;
+const CMD_ERASE = 0x43;
+const CMD_EXTENDED_ERASE = 0x44;
 
 const ACK = 0x79;
 const NACK = 0x1f;
@@ -80,21 +83,21 @@ class STM32USARTBootloader {
     }, callback);
   }
 
-  _withTimeoutAndData(begin, onData, callback) {
+  _withTimeoutAndData(begin, onData, timeoutMS, callback) {
     var callbackCalled = false;
-    var done = (function _done(callback, err) {
+    var done = (function _done(callback, err, arg) {
       clearTimeout(timeout);
       this.serialPort.removeAllListeners('data');
       if (!callbackCalled) {
         callbackCalled = true;
-        return callback(err);
+        return callback(err, arg);
       }
     }).bind(this, callback);
 
     var timeout = setTimeout(() => {
       this.serialPort.removeAllListeners('data');
       done(new Error('Timeout waiting for response'));
-    }, 1000);
+    }, timeoutMS);
        
     this.serialPort.on('data', (data) => {
       onData(data, done);
@@ -125,16 +128,48 @@ class STM32USARTBootloader {
         }
         return callback();
       },
+      1000,
       callback
     );
   }
   
+  _cmdIsAvailable(cmd) {
+    return this.availableCommands.indexOf(cmd) >= 0;
+  }
+
+  _getIdCmd(callback) {
+    if (!this._cmdIsAvailable(CMD_ID)) {
+      return callback(new Error('ID command not available'));
+    }
+    this._cmdWithAckBeginAndEnd(CMD_ID, (err, buffer) => {
+      if (err) {
+        return callback(err);
+      }
+      this.pid = (buffer[2] << 8) | buffer[3];
+      return callback(null, this.pid);
+    });
+  }
+  
   _getCmd(callback) {
+    this._cmdWithAckBeginAndEnd(CMD_GET, (err, buffer) => {
+      if (err) {
+        return callback(err);
+      }
+      this.bootloaderVersion = buffer[2];
+      this.availableCommands = [];
+      for (var i = 3; i < buffer.length - 1; i++) {
+        this.availableCommands.push(buffer[i]);
+      }
+      return callback();
+    });
+  }
+
+  _cmdWithAckBeginAndEnd(cmd, callback) {
     var buffer = new BufferBuilder();
     var len = -1;
     this._withTimeoutAndData(
       (callback) => {
-        this.serialPort.write(new Buffer([CMD_GET, ~CMD_GET]), callback);
+        this.serialPort.write(new Buffer([cmd, ~cmd]), callback);
       },
       (data, callback) => {
         if (buffer.length == 0 && data[0] != ACK) {
@@ -149,18 +184,40 @@ class STM32USARTBootloader {
           if (buffer[buffer.length - 1] != ACK) {
             return callback(new Error('Expected end ack (0x' + ACK.toString(16) + ') found 0x' + data[0].toString(16)));
           }
-          this.bootloaderVersion = buffer[2];
-          this.availableCommands = [];
-          for (var i = 3; i < buffer.length - 1; i++) {
-            this.availableCommands.push(buffer[i]);
-          }
-          console.log(this.bootloaderVersion);
-          console.log(this.availableCommands);
-          return callback();
+          return callback(null, buffer);
         }
       },
+      1000,
       callback
     );
+  }
+
+  _cmdEraseAll(callback) {
+    var len = 0;
+    if (!this._cmdIsAvailable(CMD_ERASE)) {
+      return callback(new Error('Erase command not available'));
+    }
+    this._withTimeoutAndData(
+      (callback) => {
+        this.serialPort.write(new Buffer([CMD_ERASE, ~CMD_ERASE]), callback);
+      },
+      (data, callback) => {
+        if (data[0] != ACK) {
+          return callback(new Error('Expected start ack (0x' + ACK.toString(16) + ') found 0x' + data[0].toString(16)));
+        }
+        len += data.length;
+        if (len == 2) {
+          return callback();
+        }
+        this.serialPort.write(new Buffer([0xff, 0x00]), (err) => {
+          if (err) {
+            return callback(err);
+          }
+        });
+      },
+      30 * 1000,
+      callback
+    );  
   }
 
   _runSystemMemoryFn(fn, callback) {
@@ -173,6 +230,8 @@ class STM32USARTBootloader {
       this._sleep.bind(this, 500),
       this._enterBootloader.bind(this),
       this._getCmd.bind(this),
+      this._getIdCmd.bind(this),
+      this._cmdEraseAll.bind(this),
       fn
     ], (err) => {
       async.series([
