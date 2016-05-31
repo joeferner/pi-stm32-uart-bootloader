@@ -80,79 +80,83 @@ class STM32USARTBootloader {
     }, callback);
   }
 
-  _enterBootloader(callback) {
+  _withTimeoutAndData(begin, onData, callback) {
     var timeout = setTimeout(() => {
       this.serialPort.removeAllListeners('data');
       if (callback) {
-        callback(new Error('Enter Bootloader: Timeout waiting for response to enter bootloader'));
+        callback(new Error('Timeout waiting for response'));
       }
     }, 1000);
-    this.serialPort.once('data', (data) => {
+    
+    var done = (err) => {
       clearTimeout(timeout);
-      if (data.length != 1) {
-        return callback(new Error('Enter Bootloader: Expected length 1 found ' + data.length));
+      this.serialPort.removeAllListeners('data');
+      if (callback) {
+        var cb = callback;
+        callback = null;
+        return cb(err);
       }
-      if (data[0] != 0x79) {
-        return callback(new Error('Enter Bootloader: Expected 0x79 found 0x' + data[0].toString(16)));
-      }
-      return callback();
+    };
+    
+    this.serialPort.on('data', (data) => {
+      onData(data, done);
     });
-    this.serialPort.write(new Buffer([0x7f]), (err) => {
-      if (err) {
-        clearTimeout(timeout);
-        this.serialPort.removeAllListeners('data');
-        return callback(err);
-      }
-    });
+    
+    begin(done);
   }
 
   _sleep(ms, callback) {
     setTimeout(callback, ms);
   }
 
+  _enterBootloader(callback) {
+    this._withTimeoutAndData(
+      (callback) => {
+        this.serialPort.write(new Buffer([0x7f]), callback);
+      },
+      (data, callback) => {
+        if (data.length != 1) {
+          return callback(new Error('Enter Bootloader: Expected length 1 found ' + data.length));
+        }
+        if (data[0] != 0x79) {
+          return callback(new Error('Enter Bootloader: Expected 0x79 found 0x' + data[0].toString(16)));
+        }
+        return callback();
+      }
+    );
+  }
+  
   _getCmd(callback) {
     var buffer = new BufferBuilder();
     var len = -1;
-    var timeout = setTimeout(() => {
-      this.serialPort.removeAllListeners('data');
-      if (callback) {
-        callback(new Error('Timeout waiting for response to command'));
-      }
-    }, 1000);
-    this.serialPort.on('data', (data) => {
-      if (buffer.length == 0 && data[0] != ACK) {
-        clearTimeout(timeout);
-        this.serialPort.removeAllListeners('data');
-        return callback(new Error('Expected start ack (0x' + ACK.toString(16) + ') found 0x' + data[0].toString(16)));
-      }
-      buffer.appendBuffer(data);
-      if (buffer.length > 2 && len < 0) {
-        len = buffer.get()[1] + 4;
-      }
-      if (buffer.length == len) {
-        clearTimeout(timeout);
-        this.serialPort.removeAllListeners('data');
-        buffer = buffer.get();
-        if (buffer[buffer.length - 1] != ACK) {
-          return callback(new Error('Expected end ack (0x' + ACK.toString(16) + ') found 0x' + data[0].toString(16)));
+    this._withTimeoutAndData(
+      (callback) => {
+        this.serialPort.write(new Buffer([CMD_GET, ~CMD_GET]), callback);
+      },
+      (data, callback) => {
+        if (buffer.length == 0 && data[0] != ACK) {
+          return callback(new Error('Expected start ack (0x' + ACK.toString(16) + ') found 0x' + data[0].toString(16)));
         }
-        this.bootloaderVersion = buffer[2];
-        this.availableCommands = [];
-        for (var i = 3; i < buffer.length - 1; i++) {
-          this.availableCommands.push(buffer[i]);
+        buffer.appendBuffer(data);
+        if (buffer.length > 2 && len < 0) {
+          len = buffer.get()[1] + 4;
         }
-        console.log(this.bootloaderVersion);
-        console.log(this.availableCommands);
-        return callback();
+        if (buffer.length == len) {
+          buffer = buffer.get();
+          if (buffer[buffer.length - 1] != ACK) {
+            return callback(new Error('Expected end ack (0x' + ACK.toString(16) + ') found 0x' + data[0].toString(16)));
+          }
+          this.bootloaderVersion = buffer[2];
+          this.availableCommands = [];
+          for (var i = 3; i < buffer.length - 1; i++) {
+            this.availableCommands.push(buffer[i]);
+          }
+          console.log(this.bootloaderVersion);
+          console.log(this.availableCommands);
+          return callback();
+        }
       }
-    });
-    this.serialPort.write(new Buffer([CMD_GET, ~CMD_GET]), (err) => {
-      if (err) {
-        clearTimeout(timeout);
-        this.serialPort.removeAllListeners('data');
-        return callback(err);
-      }
-    });
+    );
   }
 
   _runSystemMemoryFn(fn, callback) {
