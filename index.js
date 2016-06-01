@@ -95,6 +95,7 @@ class STM32USARTBootloader {
     }
 
     _cmdWrite(address, data, callback) {
+        console.log('write length: ' + data.length + ', address: 0x' + address.toString(16));
         const STATE = {
             WAIT_FOR_FIRST_ACK: 0,
             WAIT_FOR_START_ADDRESS_ACK: 1,
@@ -117,12 +118,12 @@ class STM32USARTBootloader {
             (callback) => {
                 this._serialPort.write(new Buffer([CMD_WRITE_MEMORY, ~CMD_WRITE_MEMORY]), callback);
             },
-            (data, callback) => {
+            (rx, callback) => {
                 switch (state) {
                     case STATE.WAIT_FOR_FIRST_ACK:
-                        if (data[0] != ACK) {
+                        if (rx[0] != ACK) {
                             state = STATE.ERROR;
-                            return callback(new Error('Expected start ack (0x' + ACK.toString(16) + ') found 0x' + data[0].toString(16)));
+                            return callback(new Error('Expected start ack (0x' + ACK.toString(16) + ') found 0x' + rx[0].toString(16)));
                         }
                         state = STATE.WAIT_FOR_START_ADDRESS_ACK;
                         buffer = new Buffer([addr0, addr1, addr2, addr3, addrChecksum]);
@@ -133,15 +134,15 @@ class STM32USARTBootloader {
                         });
 
                     case STATE.WAIT_FOR_START_ADDRESS_ACK:
-                        if (data[0] != ACK) {
+                        if (rx[0] != ACK) {
                             state = STATE.ERROR;
-                            return callback(new Error('Expected address ack (0x' + ACK.toString(16) + ') found 0x' + data[0].toString(16)));
+                            return callback(new Error('Expected address ack (0x' + ACK.toString(16) + ') found 0x' + rx[0].toString(16)));
                         }
                         state = STATE.WAIT_FOR_DATA_ACK;
                         buffer = Buffer.alloc(1 + data.length + 1);
-                        buffer[0] = data.length;
+                        buffer[0] = data.length - 1;
                         data.copy(buffer, 1, 0);
-                        buffer[buffer.length - 1] = STM32USARTBootloader._calculateChecksumOfBuffer(data);
+                        buffer[buffer.length - 1] = buffer[0] ^ STM32USARTBootloader._calculateChecksumOfBuffer(data);
                         return this._serialPort.write(buffer, (err) => {
                             if (err) {
                                 return callback(err);
@@ -149,9 +150,9 @@ class STM32USARTBootloader {
                         });
 
                     case STATE.WAIT_FOR_DATA_ACK:
-                        if (data[0] != ACK) {
+                        if (rx[0] != ACK) {
                             state = STATE.ERROR;
-                            return callback(new Error('Expected data ack (0x' + ACK.toString(16) + ') found 0x' + data[0].toString(16)));
+                            return callback(new Error('Expected data ack (0x' + ACK.toString(16) + ') found 0x' + rx[0].toString(16)));
                         }
                         state = STATE.COMPLETE;
                         return callback();
@@ -163,6 +164,7 @@ class STM32USARTBootloader {
     }
 
     _writeAll(startAddress, data, callback) {
+        console.log('write length: ' + data.length + ', startAddress: 0x' + startAddress.toString(16));
         var address = startAddress;
         var offset = 0;
         var length = data.length + (4 - (data.length % 4));
@@ -172,7 +174,7 @@ class STM32USARTBootloader {
             },
             (callback) => {
                 var packet = Buffer.alloc(WRITE_PACKET_SIZE, 0xff);
-                data.copy(packet, 0, address, Math.min(data.length, address + packet.length));
+                data.copy(packet, 0, offset);
                 this._cmdWrite(address, packet, (err) => {
                     if (err) {
                         return callback(err);
