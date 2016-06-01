@@ -31,7 +31,7 @@ class STM32USARTBootloader {
         this._resetPin = options.resetPin;
         this._boot0Pin = options.boot0Pin;
         this._serialPortPath = options.serialPortPath;
-        this._serialPortBaudRate = options.serialPortBaudRate || 9600;
+        this._serialPortBaudRate = options.serialPortBaudRate || 115200;
 
         wpi.pinMode(this._boot0Pin, wpi.OUTPUT);
 
