@@ -97,8 +97,8 @@ class STM32USARTBootloader {
     _cmdWrite(address, data, callback) {
         console.log('write length: ' + data.length + ', address: 0x' + address.toString(16));
         const STATE = {
-            WAIT_FOR_FIRST_ACK: 0,
-            WAIT_FOR_START_ADDRESS_ACK: 1,
+            SEND_ADDRESS: 0,
+            SEND_DATA: 1,
             WAIT_FOR_DATA_ACK: 2,
             COMPLETE: 3,
             ERROR: 4
@@ -110,7 +110,7 @@ class STM32USARTBootloader {
         var addr3 = (address >> 0) & 0xff;
         var addrChecksum = addr0 ^ addr1 ^ addr2 ^ addr3;
         var buffer;
-        var state = STATE.WAIT_FOR_FIRST_ACK;
+        var state = STATE.SEND_ADDRESS;
         if (!this._cmdIsAvailable(CMD_WRITE_MEMORY)) {
             return callback(new Error('write memory command not available'));
         }
@@ -120,12 +120,12 @@ class STM32USARTBootloader {
             },
             (rx, callback) => {
                 switch (state) {
-                    case STATE.WAIT_FOR_FIRST_ACK:
+                    case STATE.SEND_ADDRESS:
                         if (rx[0] != ACK) {
                             state = STATE.ERROR;
                             return callback(new Error('Expected start ack (0x' + ACK.toString(16) + ') found 0x' + rx[0].toString(16)));
                         }
-                        state = STATE.WAIT_FOR_START_ADDRESS_ACK;
+                        state = STATE.SEND_DATA;
                         buffer = new Buffer([addr0, addr1, addr2, addr3, addrChecksum]);
                         return this._serialPort.write(buffer, (err) => {
                             if (err) {
@@ -133,7 +133,7 @@ class STM32USARTBootloader {
                             }
                         });
 
-                    case STATE.WAIT_FOR_START_ADDRESS_ACK:
+                    case STATE.SEND_DATA:
                         if (rx[0] != ACK) {
                             state = STATE.ERROR;
                             return callback(new Error('Expected address ack (0x' + ACK.toString(16) + ') found 0x' + rx[0].toString(16)));
