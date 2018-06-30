@@ -48,19 +48,20 @@ var STM32USARTBootloader = require('pi-stm32-usart-bootloader');
 var fs = require('fs');
 var path = require('path');
 
-wpi.wiringPiSetupPhys();
+async function flash() {
+    wpi.wiringPiSetupPhys();
 
-bootloader = new STM32USARTBootloader({
-    resetPin: 11,
-    boot0Pin: 13,
-    serialPortPath: '/dev/serial0'
-});
+    const bootloader = new STM32USARTBootloader({
+        resetPin: 11,
+        boot0Pin: 13,
+        serialPortPath: '/dev/serial0'
+    });
+    await bootloader.init();
 
-var data = fs.readFileSync(path.join(__dirname, 'blink.bin'));
-bootloader.flash(0x08000000, data, (err) => {
-    if (err) {
-        return console.error('could not flash image', err);
-    }
+    const data = fs.readFileSync(path.join(__dirname, 'blink.bin'));
+    await bootloader.flash(0x08000000, data);
     console.log('done');
-});
+}
+
+flash();
 ```

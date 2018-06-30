@@ -1,7 +1,7 @@
 {
-  "name": "pi-stm32-usart-bootloader",
+  "name": "pi-stm32-uart-bootloader",
   "version": "0.0.1",
-  "description": "Raspberry PI STM32 USART Bootloader",
+  "description": "Raspberry PI STM32 UART Bootloader",
   "main": "index.js",
   "keywords": [
     "raspberry",
