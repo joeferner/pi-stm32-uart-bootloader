@@ -53,7 +53,7 @@ wpi.wiringPiSetupPhys();
 bootloader = new STM32USARTBootloader({
     resetPin: 11,
     boot0Pin: 13,
-    serialPortPath: '/dev/ttyAMA0'
+    serialPortPath: '/dev/serial0'
 });
 
 var data = fs.readFileSync(path.join(__dirname, 'blink.bin'));
