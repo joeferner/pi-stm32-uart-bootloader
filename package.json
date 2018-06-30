@@ -3,6 +3,10 @@
   "version": "0.0.1",
   "description": "Raspberry PI STM32 UART Bootloader",
   "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/joeferner/pi-stm32-uart-bootloader"
+  },
   "keywords": [
     "raspberry",
     "pi",
