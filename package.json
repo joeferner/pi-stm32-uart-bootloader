@@ -2,10 +2,15 @@
   "name": "pi-stm32-uart-bootloader",
   "version": "0.0.2",
   "description": "Raspberry PI STM32 UART Bootloader",
-  "main": "index.js",
+  "main": "dist/index.js",
   "repository": {
     "type": "git",
     "url": "https://github.com/joeferner/pi-stm32-uart-bootloader"
+  },
+  "scripts": {
+    "prepare": "npm run build",
+    "build": "tsc",
+    "watch": "tsc --watch"
   },
   "keywords": [
     "raspberry",
@@ -22,5 +27,9 @@
     "nested-error-stacks": "^2.0.1",
     "node-wiring-pi": "0.0.4",
     "serialport": "^6.2.1"
+  },
+  "devDependencies": {
+    "@types/node": "^10.5.1",
+    "typescript": "^2.9.2"
   }
 }

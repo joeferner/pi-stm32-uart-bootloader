@@ -1,7 +1,8 @@
-const wpi = require('node-wiring-pi');
-const SerialPort = require("serialport");
-const BufferBuilder = require('buffer-builder');
-const NestedError = require('nested-error-stacks');
+import wpi = require('node-wiring-pi');
+import SerialPort = require("serialport");
+import BufferBuilder = require('buffer-builder');
+import NestedError = require('nested-error-stacks');
+import events = require('events');
 
 const BOOT0_MAIN_FLASH = 0;
 const BOOT0_SYSTEM_MEMORY = 1;
@@ -24,56 +25,80 @@ const CMD_READOUT_UNPROTECT = 0x92;
 const ACK = 0x79;
 const NACK = 0x1f;
 
-class STM32UARTBootloader {
-    constructor(options) {
-        this._resetPin = options.resetPin;
-        this._boot0Pin = options.boot0Pin;
-        this._serialPortPath = options.serialPortPath;
-        this._serialPortBaudRate = options.serialPortBaudRate || 115200;
+export interface Stm32UartBootloaderOptions {
+    resetPin: number;
+    boot0Pin: number;
+    serialPortPath: string;
+    serialPortBaudRate: number;
+}
+
+declare interface Stm32UartBootloaderEvent {
+    on(event: 'flash-progress', listener: (address: number, current: number, total: number) => void): this;
+
+    on(event: string, listener: Function): this;
+}
+
+export class Stm32UartBootloader extends events.EventEmitter implements Stm32UartBootloaderEvent {
+    private resetPin: number;
+    private boot0Pin: number;
+    private serialPortPath: string;
+    private serialPortBaudRate: number;
+    private initCalled: boolean;
+    private serialPort: SerialPort;
+    private pid: number;
+    private bootloaderVersion: number;
+    private availableCommands: number[];
+
+    constructor(options: Stm32UartBootloaderOptions) {
+        super();
+        this.resetPin = options.resetPin;
+        this.boot0Pin = options.boot0Pin;
+        this.serialPortPath = options.serialPortPath;
+        this.serialPortBaudRate = options.serialPortBaudRate || 115200;
     }
 
     async init() {
-        if (!this._initCalled) {
+        if (!this.initCalled) {
             try {
-                wpi.pinMode(this._boot0Pin, wpi.OUTPUT);
+                wpi.pinMode(this.boot0Pin, wpi.OUTPUT);
 
                 await this._setBoot0MainFlash();
                 await this._deassertReset();
-                this._initCalled = true;
+                this.initCalled = true;
             } catch (err) {
                 throw new NestedError('could not initialize', err);
             }
         }
     }
 
-    async _setBoot0MainFlash() {
-        wpi.digitalWrite(this._boot0Pin, BOOT0_MAIN_FLASH);
+    private async _setBoot0MainFlash() {
+        wpi.digitalWrite(this.boot0Pin, BOOT0_MAIN_FLASH);
     }
 
-    async _setBoot0SystemMemory() {
-        wpi.digitalWrite(this._boot0Pin, BOOT0_SYSTEM_MEMORY);
+    private async _setBoot0SystemMemory() {
+        wpi.digitalWrite(this.boot0Pin, BOOT0_SYSTEM_MEMORY);
     }
 
-    async _deassertReset() {
-        wpi.digitalWrite(this._resetPin, 1);
-        wpi.pinMode(this._resetPin, wpi.OUTPUT);
+    private async _deassertReset() {
+        wpi.digitalWrite(this.resetPin, 1);
+        wpi.pinMode(this.resetPin, wpi.OUTPUT);
     }
 
-    async _assertReset() {
-        wpi.digitalWrite(this._resetPin, 0);
-        wpi.pinMode(this._resetPin, wpi.INPUT);
+    private async _assertReset() {
+        wpi.digitalWrite(this.resetPin, 0);
+        wpi.pinMode(this.resetPin, wpi.INPUT);
     }
 
-    async _openSerialPort() {
-        this._serialPort = new SerialPort(this._serialPortPath, {
-            baudRate: this._serialPortBaudRate,
+    private async _openSerialPort() {
+        this.serialPort = new SerialPort(this.serialPortPath, {
+            baudRate: this.serialPortBaudRate,
             dataBits: 8,
             parity: 'even',
             stopBits: 1,
             autoOpen: false
         }, false);
         return new Promise((resolve, reject) => {
-            this._serialPort.open((err) => {
+            this.serialPort.open((err) => {
                 if (err) {
                     return reject(err);
                 }
@@ -82,11 +107,15 @@ class STM32UARTBootloader {
         });
     }
 
-    async _closeSerialPort() {
+    private async _closeSerialPort() {
+        if (!this.serialPort) {
+            return;
+        }
+
         return new Promise((resolve, reject) => {
-            this._serialPort.removeAllListeners('data');
-            this._serialPort.close((err) => {
-                this._serialPort = null;
+            this.serialPort.removeAllListeners('data');
+            this.serialPort.close((err) => {
+                this.serialPort = null;
                 if (err && err.message.indexOf('Port is not open') >= 0) {
                     err = null;
                 }
@@ -98,7 +127,7 @@ class STM32UARTBootloader {
         });
     }
 
-    static _calculateChecksumOfBuffer(buffer) {
+    private static _calculateChecksumOfBuffer(buffer: Buffer) {
         let checksum = 0x00;
         for (let i = 0; i < buffer.length; i++) {
             checksum = checksum ^ buffer[i];
@@ -106,8 +135,7 @@ class STM32UARTBootloader {
         return checksum;
     }
 
-    async _cmdWrite(address, data) {
-        console.log('write length: ' + data.length + ', address: 0x' + address.toString(16));
+    private async _cmdWrite(address: number, data: Buffer) {
         const STATE = {
             SEND_ADDRESS: 0,
             SEND_DATA: 1,
@@ -128,7 +156,7 @@ class STM32UARTBootloader {
         }
         return this._withTimeoutAndData(
             (callback) => {
-                this._serialPort.write(new Buffer([CMD_WRITE_MEMORY, ~CMD_WRITE_MEMORY]), callback);
+                this.serialPort.write(new Buffer([CMD_WRITE_MEMORY, ~CMD_WRITE_MEMORY]), callback);
             },
             (rx, callback) => {
                 switch (state) {
@@ -139,7 +167,7 @@ class STM32UARTBootloader {
                         }
                         state = STATE.SEND_DATA;
                         buffer = new Buffer([addr0, addr1, addr2, addr3, addrChecksum]);
-                        return this._serialPort.write(buffer, (err) => {
+                        return this.serialPort.write(buffer, (err) => {
                             if (err) {
                                 return callback(err);
                             }
@@ -154,8 +182,8 @@ class STM32UARTBootloader {
                         buffer = Buffer.alloc(1 + data.length + 1);
                         buffer[0] = data.length - 1;
                         data.copy(buffer, 1, 0);
-                        buffer[buffer.length - 1] = buffer[0] ^ STM32UARTBootloader._calculateChecksumOfBuffer(data);
-                        return this._serialPort.write(buffer, (err) => {
+                        buffer[buffer.length - 1] = buffer[0] ^ Stm32UartBootloader._calculateChecksumOfBuffer(data);
+                        return this.serialPort.write(buffer, (err) => {
                             if (err) {
                                 return callback(err);
                             }
@@ -174,8 +202,7 @@ class STM32UARTBootloader {
         );
     }
 
-    async _writeAll(startAddress, data) {
-        console.log('write length: ' + data.length + ', startAddress: 0x' + startAddress.toString(16));
+    private async _writeAll(startAddress: number, data: Buffer) {
         let address = startAddress;
         let offset = 0;
         const length = data.length + (4 - (data.length % 4));
@@ -183,28 +210,34 @@ class STM32UARTBootloader {
             const packet = Buffer.alloc(WRITE_PACKET_SIZE, 0xff);
             data.copy(packet, 0, offset);
             await this._cmdWrite(address, packet);
+            this.emit('flash-progress', address, offset, length);
             address += packet.length;
             offset += packet.length;
         }
     }
 
-    async flash(address, data) {
+    async flash(address: number, data: Buffer) {
         return this._runSystemMemoryFn(async () => {
             await this._cmdEraseAll();
             await this._writeAll(address, data);
         });
     }
 
-    async _withTimeoutAndData(begin, onData, timeoutMS) {
-        return new Promise((resolve, reject) => {
+    private async _withTimeoutAndData<T>(
+        begin: (callback: Function) => void,
+        onData: (data: Buffer, done: Function) => void,
+        timeoutMS: number
+    ): Promise<T> {
+        return new Promise<T>((resolve, reject) => {
             const timeout = setTimeout(() => {
-                this._serialPort.removeAllListeners('data');
+                this.serialPort.removeAllListeners('data');
                 done(timeoutError);
             }, timeoutMS);
             let callbackCalled = false;
+            const self = this;
             const done = (function _done(err, arg) {
                 clearTimeout(timeout);
-                this._serialPort.removeAllListeners('data');
+                self.serialPort.removeAllListeners('data');
                 if (!callbackCalled) {
                     callbackCalled = true;
                     if (err) {
@@ -216,7 +249,7 @@ class STM32UARTBootloader {
 
             const timeoutError = new Error('Timeout waiting for response');
 
-            this._serialPort.on('data', (data) => {
+            this.serialPort.on('data', (data) => {
                 onData(data, done);
             });
 
@@ -228,16 +261,16 @@ class STM32UARTBootloader {
         });
     }
 
-    static async _sleep(ms) {
+    private static async _sleep(ms: number) {
         return new Promise((resolve) => {
             setTimeout(resolve, ms);
         });
     }
 
-    async _enterBootloader() {
+    private async _enterBootloader() {
         return this._withTimeoutAndData(
             (callback) => {
-                this._serialPort.write(new Buffer([0x7f]), callback);
+                this.serialPort.write(new Buffer([0x7f]), callback);
             },
             (data, callback) => {
                 if (data.length !== 1) {
@@ -252,34 +285,34 @@ class STM32UARTBootloader {
         );
     }
 
-    _cmdIsAvailable(cmd) {
-        return this._availableCommands.indexOf(cmd) >= 0;
+    private _cmdIsAvailable(cmd: number) {
+        return this.availableCommands.indexOf(cmd) >= 0;
     }
 
-    async _getIdCmd() {
+    private async _getIdCmd() {
         if (!this._cmdIsAvailable(CMD_ID)) {
             throw new Error('ID command not available');
         }
         const buffer = await this._cmdWithAckBeginAndEnd(CMD_ID);
-        this._pid = (buffer[2] << 8) | buffer[3];
-        return this._pid;
+        this.pid = (buffer[2] << 8) | buffer[3];
+        return this.pid;
     }
 
-    async _getCmd(callback) {
+    private async _getCmd() {
         const buffer = await this._cmdWithAckBeginAndEnd(CMD_GET);
-        this._bootloaderVersion = buffer[2];
-        this._availableCommands = [];
+        this.bootloaderVersion = buffer[2];
+        this.availableCommands = [];
         for (let i = 3; i < buffer.length - 1; i++) {
-            this._availableCommands.push(buffer[i]);
+            this.availableCommands.push(buffer[i]);
         }
     }
 
-    async _cmdWithAckBeginAndEnd(cmd) {
+    private async _cmdWithAckBeginAndEnd(cmd: number): Promise<BufferBuilder> {
         let buffer = new BufferBuilder();
         let len = -1;
-        return this._withTimeoutAndData(
+        return this._withTimeoutAndData<BufferBuilder>(
             (callback) => {
-                this._serialPort.write(new Buffer([cmd, ~cmd]), callback);
+                this.serialPort.write(new Buffer([cmd, ~cmd]), callback);
             },
             (data, callback) => {
                 if (buffer.length === 0 && data[0] !== ACK) {
@@ -301,14 +334,14 @@ class STM32UARTBootloader {
         );
     }
 
-    async _cmdEraseAll() {
+    private async _cmdEraseAll() {
         let len = 0;
         if (!this._cmdIsAvailable(CMD_ERASE)) {
             throw new Error('Erase command not available');
         }
         return this._withTimeoutAndData(
             (callback) => {
-                this._serialPort.write(new Buffer([CMD_ERASE, ~CMD_ERASE]), callback);
+                this.serialPort.write(new Buffer([CMD_ERASE, ~CMD_ERASE]), callback);
             },
             (data, callback) => {
                 if (data[0] !== ACK) {
@@ -318,7 +351,7 @@ class STM32UARTBootloader {
                 if (len === 2) {
                     return callback();
                 }
-                this._serialPort.write(new Buffer([0xff, 0x00]), (err) => {
+                this.serialPort.write(new Buffer([0xff, 0x00]), (err) => {
                     if (err) {
                         return callback(err);
                     }
@@ -328,22 +361,23 @@ class STM32UARTBootloader {
         );
     }
 
-    async _runSystemMemoryFn(fn) {
-        await this._openSerialPort();
-        await this._assertReset();
-        await this._setBoot0SystemMemory();
-        await STM32UARTBootloader._sleep(10);
-        await this._deassertReset();
-        await STM32UARTBootloader._sleep(500);
-        await this._enterBootloader();
-        await this._getCmd();
-        await this._getIdCmd();
-        await fn();
-        await this._assertReset();
-        await this._setBoot0MainFlash();
-        await this._closeSerialPort();
-        await this._deassertReset();
+    private async _runSystemMemoryFn(fn: Function) {
+        try {
+            await this._openSerialPort();
+            await this._assertReset();
+            await this._setBoot0SystemMemory();
+            await Stm32UartBootloader._sleep(10);
+            await this._deassertReset();
+            await Stm32UartBootloader._sleep(500);
+            await this._enterBootloader();
+            await this._getCmd();
+            await this._getIdCmd();
+            await fn();
+            await this._assertReset();
+            await this._setBoot0MainFlash();
+        } finally {
+            await this._closeSerialPort();
+            await this._deassertReset();
+        }
     }
 }
-
-module.exports = STM32UARTBootloader;
