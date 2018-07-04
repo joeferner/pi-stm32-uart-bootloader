@@ -1,12 +1,12 @@
 const wpi = require('node-wiring-pi');
-const STM32USARTBootloader = require('../');
+const STM32UARTBootloader = require('../');
 const fs = require('fs');
 const path = require('path');
 
 async function flash() {
     wpi.wiringPiSetupPhys();
 
-    const bootloader = new STM32USARTBootloader({
+    const bootloader = new STM32UARTBootloader({
         resetPin: 11,
         boot0Pin: 13,
         serialPortPath: '/dev/serial0'

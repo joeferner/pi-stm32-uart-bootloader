@@ -24,7 +24,7 @@ const CMD_READOUT_UNPROTECT = 0x92;
 const ACK = 0x79;
 const NACK = 0x1f;
 
-class STM32USARTBootloader {
+class STM32UARTBootloader {
     constructor(options) {
         this._resetPin = options.resetPin;
         this._boot0Pin = options.boot0Pin;
@@ -154,7 +154,7 @@ class STM32USARTBootloader {
                         buffer = Buffer.alloc(1 + data.length + 1);
                         buffer[0] = data.length - 1;
                         data.copy(buffer, 1, 0);
-                        buffer[buffer.length - 1] = buffer[0] ^ STM32USARTBootloader._calculateChecksumOfBuffer(data);
+                        buffer[buffer.length - 1] = buffer[0] ^ STM32UARTBootloader._calculateChecksumOfBuffer(data);
                         return this._serialPort.write(buffer, (err) => {
                             if (err) {
                                 return callback(err);
@@ -332,9 +332,9 @@ class STM32USARTBootloader {
         await this._openSerialPort();
         await this._assertReset();
         await this._setBoot0SystemMemory();
-        await STM32USARTBootloader._sleep(10);
+        await STM32UARTBootloader._sleep(10);
         await this._deassertReset();
-        await STM32USARTBootloader._sleep(500);
+        await STM32UARTBootloader._sleep(500);
         await this._enterBootloader();
         await this._getCmd();
         await this._getIdCmd();
@@ -346,4 +346,4 @@ class STM32USARTBootloader {
     }
 }
 
-module.exports = STM32USARTBootloader;
+module.exports = STM32UARTBootloader;

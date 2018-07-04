@@ -11,7 +11,7 @@
     "raspberry",
     "pi",
     "stm32",
-    "usart",
+    "uart",
     "bootloader"
   ],
   "author": "Joe Ferner <joe@fernsroth.com>",

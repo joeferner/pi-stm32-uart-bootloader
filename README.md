@@ -1,7 +1,7 @@
 
-**Raspberry PI STM32 USART Bootloader**
+**Raspberry PI STM32 UART Bootloader**
 
-This node module facilitates flashing an STM32 over the built in USART bootloader.
+This node module facilitates flashing an STM32 over the built in UART bootloader.
 
 The STM32 has a built in bootloader which can be accessed by setting the following
 BOOT1 and BOOT0 pins. "Main Flash Memory" is where your program typically resides.
@@ -13,13 +13,13 @@ BOOT1 and BOOT0 pins. "Main Flash Memory" is where your program typically reside
 |   0   |   1   | System Memory     |
 |   1   |   1   | Embedded SRAM     |
 
-This module will toggle these pins (BOOT0 and BOOT1) along with the reset pin and USART
+This module will toggle these pins (BOOT0 and BOOT1) along with the reset pin and UART
 to flash the STM32.
 
 ### Raspberry Pi 3
 
 On the Raspberry Pi 3 yo get better baud rate results you will probably want to remap the
-physical USART away from the bluetooth and back to the USART pins. To do this add the following
+physical UART away from the bluetooth and back to the UART pins. To do this add the following
 line to your `/boot/config.txt` file.
 
 ```
@@ -33,8 +33,8 @@ You'll need to make the following connections.
 
 |  Pi  | STM32            |
 |-----:|------------------|
-|  8   | USART RX PA10    |
-|  10  | USART TX PA9     |
+|  8   | UART RX PA10     |
+|  10  | UART TX PA9      |
 |  11  | RESET            |
 |  13  | BOOT0            |
 |      | BOOT1/PB2 -> GND |
@@ -44,14 +44,14 @@ replacing it with a weak pull up resistor (10K should work).
 
 ```javascript
 var wpi = require('wiring-pi');
-var STM32USARTBootloader = require('pi-stm32-usart-bootloader');
+var STM32UARTBootloader = require('pi-stm32-uart-bootloader');
 var fs = require('fs');
 var path = require('path');
 
 async function flash() {
     wpi.wiringPiSetupPhys();
 
-    const bootloader = new STM32USARTBootloader({
+    const bootloader = new STM32UARTBootloader({
         resetPin: 11,
         boot0Pin: 13,
         serialPortPath: '/dev/serial0'
