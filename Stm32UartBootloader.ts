@@ -29,7 +29,7 @@ export interface Stm32UartBootloaderOptions {
     resetPin: number;
     boot0Pin: number;
     serialPortPath: string;
-    serialPortBaudRate: number;
+    serialPortBaudRate?: number;
 }
 
 declare interface Stm32UartBootloaderEvent {
